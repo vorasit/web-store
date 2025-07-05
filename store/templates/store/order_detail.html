@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}Order Details{% endblock %}
+
+{% block content %}
+    <h1 class="mb-4">Order #{{ order.id }} Details</h1>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Order Summary</h5>
+            <p class="card-text"><strong>Total:</strong> ${{ order.total }}</p>
+            <p class="card-text"><strong>Date:</strong> {{ order.created_at }}</p>
+            <p class="card-text"><strong>Status:</strong> {{ order.status }}</p>
+            <p class="card-text"><strong>Payment Method:</strong> {{ order.payment_method }}</p>
+            {% if order.tracking_number %}
+                <p class="card-text"><strong>Tracking Number:</strong> {{ order.tracking_number }}</p>
+            {% endif %}
+            {% if order.shipping_company %}
+                <p class="card-text"><strong>Shipping Company:</strong> {{ order.shipping_company }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <h2 class="mb-3">Items:</h2>
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Subtotal</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order_items %}
+                <tr>
+                    <td>
+                        {% if item.product.image %}
+                            <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" style="width: 50px; height: 50px; object-fit: cover; margin-right: 10px;">
+                        {% endif %}
+                        {{ item.product.name }}
+                    </td>
+                    <td>{{ item.quantity }}</td>
+                    <td>${{ item.price }}</td>
+                    <td>${{ item.sub_total }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <a href="{% url 'order_history' %}" class="btn btn-secondary">Back to Order History</a>
+{% endblock %}

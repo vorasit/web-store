@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+{% block title %}Order History{% endblock %}
+
+{% block content %}
+    <h1 class="mb-4">Order History</h1>
+
+    {% if orders %}
+        <div class="list-group">
+            {% for order in orders %}
+                <a href="{% url 'order_detail' order.id %}" class="list-group-item list-group-item-action">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h5 class="mb-1">Order #{{ order.id }}</h5>
+                        <small>{{ order.created_at }}</small>
+                    </div>
+                    <p class="mb-1">Total: ${{ order.total }} | Status: {{ order.status }}</p>
+                    <div class="d-flex flex-wrap">
+                        {% for item in order.orderitem_set.all %}
+                            {% if item.product.image %}
+                                <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" style="width: 50px; height: 50px; object-fit: cover; margin-right: 10px; margin-bottom: 5px;">
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="alert alert-info">You have no orders yet.</p>
+    {% endif %}
+
+    <a href="{% url 'product_list' %}" class="btn btn-secondary mt-3">Continue Shopping</a>
+{% endblock %}

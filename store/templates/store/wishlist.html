@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}My Wishlist{% endblock %}
+
+{% block content %}
+    <h1 class="mb-4">My Wishlist</h1>
+
+    {% if wishlist_items %}
+        <div class="row">
+            {% for item in wishlist_items %}
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        {% if item.product.image %}
+                            <img src="{{ item.product.image.url }}" class="card-img-top img-fluid" alt="{{ item.product.name }}">
+                        {% endif %}
+                        <div class="card-body">
+                            <h5 class="card-title"><a href="{% url 'product_detail' item.product.slug %}">{{ item.product.name }}</a></h5>
+                            <p class="card-text">Price: ${{ item.product.price }}</p>
+                            <form action="{% url 'add_cart' item.product.id %}" method="post" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-primary btn-sm">Add to Cart</button>
+                            </form>
+                            <form action="{% url 'remove_from_wishlist' item.product.id %}" method="post" class="d-inline ms-2">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="alert alert-info">Your wishlist is empty.</p>
+    {% endif %}
+
+    <a href="{% url 'product_list' %}" class="btn btn-secondary mt-3">Continue Shopping</a>
+{% endblock %}

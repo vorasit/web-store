@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block title %}Order Confirmation{% endblock %}
+
+{% block content %}
+    <h1 class="mb-4">Order Confirmation</h1>
+    <div class="alert alert-success" role="alert">
+        Your order has been placed successfully!
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Order Summary (Order #{{ order.id }})</h5>
+            <p class="card-text"><strong>Total:</strong> ${{ order.total }}</p>
+            <p class="card-text"><strong>Date:</strong> {{ order.created_at }}</p>
+            <p class="card-text"><strong>Payment Method:</strong> {{ order.payment_method }}</p>
+            {% if order.tracking_number %}
+                <p class="card-text"><strong>Tracking Number:</strong> {{ order.tracking_number }}</p>
+            {% endif %}
+            {% if order.shipping_company %}
+                <p class="card-text"><strong>Shipping Company:</strong> {{ order.shipping_company }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <h2 class="mb-3">Items in this Order:</h2>
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Subtotal</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order_items %}
+                <tr>
+                    <td>{{ item.product.name }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>${{ item.price }}</td>
+                    <td>${{ item.sub_total }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <p><a href="{% url 'product_list' %}" class="btn btn-primary">Continue Shopping</a></p>
+    <p><a href="{% url 'order_history' %}" class="btn btn-secondary">View All Your Orders</a></p>
+{% endblock %}

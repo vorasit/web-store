@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+{% block title %}Checkout{% endblock %}
+
+{% block content %}
+    <h1 class="mb-4">Checkout</h1>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Order Summary</h5>
+                    <ul class="list-group list-group-flush">
+                        {% for item in cart_items %}
+                            <li class="list-group-item">
+                                {{ item.product.name }} x {{ item.quantity }} - ${{ item.sub_total }}
+                            </li>
+                        {% endfor %}
+                        <li class="list-group-item active">
+                            <strong>Total: ${{ total }}</strong>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Payment Method</h5>
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="payment_method" id="cash_on_delivery" value="Cash on Delivery" checked>
+                            <label class="form-check-label" for="cash_on_delivery">
+                                Cash on Delivery
+                            </label>
+                        </div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="radio" name="payment_method" id="stripe" value="Stripe">
+                            <label class="form-check-label" for="stripe">
+                                Pay with Card (Stripe)
+                            </label>
+                        </div>
+                        <button type="submit" class="btn btn-primary mt-3">Place Order</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
