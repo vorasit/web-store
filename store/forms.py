@@ -3,6 +3,9 @@ from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from .models import Review, UserProfile
 
+class CouponApplyForm(forms.Form):
+    code = forms.CharField()
+
 class CustomUserCreationForm(UserCreationForm):
     first_name = forms.CharField(max_length=30, required=False, help_text='Optional.')
     last_name = forms.CharField(max_length=150, required=False, help_text='Optional.')

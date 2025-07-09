@@ -1,14 +1,34 @@
 from django.shortcuts import render, get_object_or_404, redirect
-from .models import Product, Category, Cart, CartItem, Order, OrderItem, Review
+from .models import Product, Category, Cart, CartItem, Order, OrderItem, Review, Coupon
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import login
 from django.db.models import Q, Avg, Count
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from .forms import UserProfileForm, ReviewForm
+from .forms import UserProfileForm, ReviewForm, CouponApplyForm
 from django.contrib import messages
 from django.conf import settings
 import stripe
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+
+@require_POST
+def coupon_apply(request):
+    now = timezone.now()
+    form = CouponApplyForm(request.POST)
+    if form.is_valid():
+        code = form.cleaned_data['code']
+        try:
+            coupon = Coupon.objects.get(code__iexact=code,
+                                      valid_from__lte=now,
+                                      valid_to__gte=now,
+                                      active=True)
+            request.session['coupon_id'] = coupon.id
+            messages.success(request, 'Coupon applied successfully.')
+        except Coupon.DoesNotExist:
+            request.session['coupon_id'] = None
+            messages.error(request, 'This coupon does not exist or is not active.')
+    return redirect('cart_detail')
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -20,6 +40,11 @@ def _cart_id(request):
 
 def add_cart(request, product_id):
     product = get_object_or_404(Product, id=product_id)
+
+    if product.stock <= 0:
+        messages.error(request, f'Sorry, {product.name} is out of stock.')
+        return redirect('product_detail', slug=product.slug)
+
     try:
         cart = Cart.objects.get(cart_id=_cart_id(request))
     except Cart.DoesNotExist:
@@ -29,8 +54,12 @@ def add_cart(request, product_id):
         cart.save()
     try:
         cart_item = CartItem.objects.get(product=product, cart=cart)
-        cart_item.quantity += 1
-        cart_item.save()
+        if cart_item.quantity < product.stock:
+            cart_item.quantity += 1
+            cart_item.save()
+            messages.success(request, f'Updated quantity for {product.name}.')
+        else:
+            messages.warning(request, f'You have reached the maximum stock for {product.name}.')
     except CartItem.DoesNotExist:
         cart_item = CartItem.objects.create(
             product = product,
@@ -38,19 +67,40 @@ def add_cart(request, product_id):
             cart = cart
         )
         cart_item.save()
-    messages.success(request, f'{product.name} has been added to your cart.')
+        messages.success(request, f'{product.name} has been added to your cart.')
     return redirect('cart_detail')
 
 def cart_detail(request, total=0, counter=0, cart_items=None):
+    discount = 0
+    new_total = 0
+    coupon = None
     try:
         cart = Cart.objects.get(cart_id=_cart_id(request))
         cart_items = CartItem.objects.filter(cart=cart, active=True)
         for cart_item in cart_items:
             total += (cart_item.product.price * cart_item.quantity)
             counter += cart_item.quantity
+        
+        coupon_id = request.session.get('coupon_id')
+        if coupon_id:
+            coupon = Coupon.objects.get(id=coupon_id)
+            discount = (total * coupon.discount) / 100
+            new_total = total - discount
+
     except Cart.DoesNotExist:
         pass
-    return render(request, 'store/cart.html', dict(cart_items = cart_items, total = total, counter = counter))
+
+    coupon_apply_form = CouponApplyForm()
+
+    return render(request, 'store/cart.html', dict(
+        cart_items=cart_items, 
+        total=total, 
+        counter=counter, 
+        coupon_apply_form=coupon_apply_form, 
+        coupon=coupon, 
+        discount=discount, 
+        new_total=new_total
+    ))
 
 def remove_cart(request, product_id):
     product = get_object_or_404(Product, id=product_id)
@@ -80,25 +130,58 @@ def checkout(request):
     for cart_item in cart_items:
         total += (cart_item.product.price * cart_item.quantity)
 
+    coupon = None
+    discount = 0
+    new_total = total
+
+    coupon_id = request.session.get('coupon_id')
+    if coupon_id:
+        try:
+            coupon = Coupon.objects.get(id=coupon_id)
+            discount = (total * coupon.discount) / 100
+            new_total = total - discount
+        except Coupon.DoesNotExist:
+            pass
+
     if request.method == 'POST':
+        # Check stock before processing payment
+        for cart_item in cart_items:
+            product = cart_item.product
+            if product.stock < cart_item.quantity:
+                messages.error(request, f"Sorry, we only have {product.stock} of {product.name} in stock. Please adjust your cart.")
+                return redirect('cart_detail')
+
         payment_method = request.POST.get('payment_method')
         
-        order = Order.objects.create(user=request.user, total=total, payment_method=payment_method)
+        order = Order.objects.create(
+            user=request.user, 
+            total=new_total, 
+            payment_method=payment_method,
+            coupon=coupon,
+            discount=coupon.discount if coupon else 0
+        )
         order.save()
 
         if payment_method == 'Cash on Delivery':
             for cart_item in cart_items:
+                product = cart_item.product
                 OrderItem.objects.create(
                     order=order,
-                    product=cart_item.product,
+                    product=product,
                     quantity=cart_item.quantity,
-                    price=cart_item.product.price
+                    price=product.price
                 )
+                # Decrease stock
+                product.stock -= cart_item.quantity
+                product.save()
                 cart_item.delete() # Clear cart item after creating order item
-
+            
+            request.session['coupon_id'] = None # Clear coupon after use
             messages.success(request, 'Your order has been placed successfully!')
             return redirect('order_confirmation', order_id=order.id)
         elif payment_method == 'Stripe':
+            # The stock check is already done above.
+            # The stock deduction should happen in the webhook after a successful payment.
             line_items = []
             for item in cart_items:
                 line_items.append({
@@ -107,10 +190,15 @@ def checkout(request):
                         'product_data': {
                             'name': item.product.name,
                         },
-                        'unit_amount': int(item.product.price * 100), # Stripe expects amount in cents
+                        'unit_amount': int(item.product.price * 100),
                     },
                     'quantity': item.quantity,
                 })
+            
+            # Stripe doesn't directly support applying discounts on the entire session easily
+            # in this flow. We pass the discounted total in the order object and handle it.
+            # For simplicity, we are not creating a coupon in Stripe itself.
+
             try:
                 checkout_session = stripe.checkout.Session.create(
                     line_items=line_items,
@@ -120,16 +208,24 @@ def checkout(request):
                     metadata={
                         'user_id': request.user.id,
                         'cart_id': cart.id,
-                        'order_id': order.id, # Pass the order ID to Stripe metadata
+                        'order_id': order.id,
+                        'coupon_id': coupon.id if coupon else ''
                     }
                 )
                 return redirect(checkout_session.url, code=303)
             except Exception as e:
                 messages.error(request, f'Error processing Stripe payment: {e}')
-                order.delete() # Delete the order if Stripe checkout fails
+                order.delete()
                 return redirect('checkout')
     
-    return render(request, 'store/checkout.html', {'total': total, 'cart_items': cart_items, 'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY})
+    return render(request, 'store/checkout.html', {
+        'total': total, 
+        'cart_items': cart_items, 
+        'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY,
+        'coupon': coupon,
+        'discount': discount,
+        'new_total': new_total
+    })
 
 @login_required
 def order_confirmation(request, order_id=None):
@@ -184,19 +280,33 @@ def stripe_webhook(request):
         session = event['data']['object']
 
         # Fulfill the purchase...
-        # You can retrieve the order based on the metadata you passed during session creation
-        user_id = session.metadata.get('user_id')
-        cart_id = session.metadata.get('cart_id')
-        order_id = session.metadata.get('order_id') # If you passed order_id
+        order_id = session.metadata.get('order_id')
 
         if order_id:
             try:
                 order = Order.objects.get(id=order_id)
-                order.status = 'Processing' # Or 'Paid' or similar
-                order.payment_method = 'Stripe'
-                order.save()
-                # Clear the cart if necessary
-                # Cart.objects.filter(id=cart_id).delete()
+                # Check if order has already been processed
+                if order.status == 'Pending':
+                    order.status = 'Processing' # Or 'Paid'
+                    order.payment_method = 'Stripe'
+                    order.save()
+
+                    # Deduct stock
+                    order_items = OrderItem.objects.filter(order=order)
+                    for item in order_items:
+                        product = item.product
+                        product.stock -= item.quantity
+                        product.save()
+                    
+                    # Clear the user's cart
+                    cart_id = session.metadata.get('cart_id')
+                    if cart_id:
+                        Cart.objects.filter(id=cart_id).delete()
+                    
+                    # Clear the coupon from the session
+                    if session.metadata.get('coupon_id'):
+                        request.session['coupon_id'] = None
+
             except Order.DoesNotExist:
                 print(f"Order with ID {order_id} not found.")
         else:
@@ -245,6 +355,12 @@ def product_list(request, category_slug=None):
     category = None
     categories = Category.objects.all()
     products_list = Product.objects.all().annotate(average_rating=Avg('reviews__rating'), review_count=Count('reviews'))
+    query = request.GET.get('q')
+
+    if query:
+        products_list = products_list.filter(
+            Q(name__icontains=query) | Q(description__icontains=query)
+        )
 
     sort_by = request.GET.get('sort_by', 'name') # Default sort by name
 
@@ -260,6 +376,7 @@ def product_list(request, category_slug=None):
         products_list = products_list.order_by('-average_rating')
     else:
         products_list = products_list.order_by('name')
+        
     if category_slug:
         category = get_object_or_404(Category, slug=category_slug)
         products_list = products_list.filter(category=category)
@@ -284,7 +401,8 @@ def product_list(request, category_slug=None):
     return render(request, 'store/product_list.html', {
         'category': category,
         'categories': categories,
-        'products': products
+        'products': products,
+        'query': query
     })
 
 def product_detail(request, slug):
@@ -363,32 +481,7 @@ from .models import Product, Category, Cart, CartItem, Order, OrderItem, Review,
 
 # ... (rest of the existing code above this point)
 
-def search(request):
-    products_list = Product.objects.all().order_by('name')
-    query = None
 
-    if 'q' in request.GET:
-        query = request.GET.get('q')
-        products_list = products_list.filter(Q(name__contains=query) | Q(description__contains=query))
-
-    min_price = request.GET.get('min_price')
-    max_price = request.GET.get('max_price')
-
-    if min_price:
-        products_list = products_list.filter(price__gte=min_price)
-    if max_price:
-        products_list = products_list.filter(price__lte=max_price)
-
-    paginator = Paginator(products_list, 6) # Show 6 products per page
-    page = request.GET.get('page')
-    try:
-        products = paginator.page(page)
-    except PageNotAnInteger:
-        products = paginator.page(1)
-    except EmptyPage:
-        products = paginator.page(paginator.num_pages)
-
-    return render(request, 'store/product_list.html', {'query': query, 'products': products, 'categories': Category.objects.all()})
 
 @login_required
 def add_to_wishlist(request, product_id):

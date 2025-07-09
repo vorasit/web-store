@@ -5,10 +5,11 @@ urlpatterns = [
     path('', views.product_list, name='product_list'),
     path('add/<int:product_id>/', views.add_cart, name='add_cart'),
     path('cart/', views.cart_detail, name='cart_detail'),
+    path('coupon_apply/', views.coupon_apply, name='coupon_apply'),
     path('remove/<int:product_id>/', views.remove_cart, name='remove_cart'),
     path('full_remove/<int:product_id>/', views.remove_full_cart, name='remove_full_cart'),
     path('register/', views.register, name='register'),
-    path('search/', views.search, name='search'),
+    
     path('checkout/', views.checkout, name='checkout'),
     path('order_confirmation/<int:order_id>/', views.order_confirmation, name='order_confirmation'),
     path('order_history/', views.order_history, name='order_history'),

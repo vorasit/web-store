@@ -37,15 +37,43 @@
                 {% endfor %}
                 <tr>
                     <td colspan="3" class="text-end"><strong>Total:</strong></td>
-                    <td><strong>${{ total }}</strong></td>
-                    <td></td>
+                    <td colspan="2"><strong>${{ total|floatformat:2 }}</strong></td>
                 </tr>
+                {% if coupon %}
+                    <tr>
+                        <td colspan="3" class="text-end text-success"><strong>Coupon '{{ coupon.code }}' ({{ coupon.discount }}% off):</strong></td>
+                        <td colspan="2" class="text-success"><strong>- ${{ discount|floatformat:2 }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td colspan="3" class="text-end"><strong>New Total:</strong></td>
+                        <td colspan="2"><strong>${{ new_total|floatformat:2 }}</strong></td>
+                    </tr>
+                {% endif %}
             </tbody>
         </table>
-        <p class="text-end"><a href="{% url 'checkout' %}" class="btn btn-primary">Checkout</a></p>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Apply Coupon</h5>
+                        <form action="{% url 'coupon_apply' %}" method="post">
+                            {% csrf_token %}
+                            <div class="input-group">
+                                {{ coupon_apply_form.code }}
+                                <button class="btn btn-primary" type="submit">Apply</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <a href="{% url 'product_list' %}" class="btn btn-secondary">Continue Shopping</a>
+                <a href="{% url 'checkout' %}" class="btn btn-primary">Proceed to Checkout</a>
+            </div>
+        </div>
     {% else %}
         <p class="alert alert-info">Your cart is empty.</p>
+        <a href="{% url 'product_list' %}" class="btn btn-secondary">Continue Shopping</a>
     {% endif %}
-
-    <a href="{% url 'product_list' %}" class="btn btn-secondary">Continue Shopping</a>
 {% endblock %}
